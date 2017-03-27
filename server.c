@@ -88,6 +88,7 @@ int main(){
 
 		for(int i = 0; i < MAX_CLIENT; i++){
 			if(clientfds[i] > 0 && FD_ISSET(clientfds[i], &set)){
+				memset(buffer, 0, sizeof(buffer));
 				if(read(clientfds[i], buffer, sizeof(buffer)) > 0){
 					printf("Client %d said: %s\n", i, buffer);
 				} else{
