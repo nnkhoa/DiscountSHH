@@ -7,13 +7,13 @@ struct cmd{
 	char *output;		//output not null = file or name for output redirection
 	char *background;	//background not null = processes in background
 	char ***sequence;	//see below
-} 
+};
 
 //sequence here is a sequence of command, output of the previous one the input of the next
 //are linked by a pipe
 //a command is an array of string (char **), last item is a null pointer
 //a sequence of command is an array of command (char ***), last item is a null pointer
 
-struct cmd *parseinput(char * input);
+int exec_cmd(char * input);
 
 #endif
