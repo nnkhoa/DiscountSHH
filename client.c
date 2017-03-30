@@ -61,7 +61,7 @@ int main(int argc, char** argv){
 			return -1;
 		}
 
-		if(strcmp(buffer, "/quit\n") == 0){
+		if((strcmp(buffer, "/quit\n") == 0) || (strcmp(buffer, "exit\n") == 0)){
 			shutdown(sockfd, SHUT_RDWR);
 			close(sockfd);
 			printf("Exitting....\n");
