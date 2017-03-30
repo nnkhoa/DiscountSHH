@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/select.h>
+#include "cmdshell.h"
 
 int main(){
 	int sockfd, clientlen, clientfd;		//original socket, size of client address, returned client socket
@@ -91,6 +92,9 @@ int main(){
 				memset(buffer, 0, sizeof(buffer));
 				if(read(clientfds[i], buffer, sizeof(buffer)) > 0){
 					printf("Client %d said: %s\n", i, buffer);
+					//do something to parse it here
+					exec_cmd(buffer);
+
 				} else{
 					printf("Client %d has disconnected\n", i);
 					clientfds[i] = 0;
