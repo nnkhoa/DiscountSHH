@@ -52,11 +52,15 @@ int main(int argc, char** argv){
 
 	printf("Connected!\n");
 
+	int ch;
+	while(((ch = getchar()) != EOF) && (ch != '\n'));
+
 	while(1){
+
 		memset(buffer, 0, sizeof(buffer));
 		
 		printf(">Client: ");
-		
+		fflush(stdin);
 		if(fgets(buffer, sizeof(buffer), stdin) == NULL){
 			return -1;
 		}
