@@ -40,9 +40,10 @@ static char *readline(char *input){
 	if ((l > 0) && (input[l-1] == '\n')) {
 		l--;
 		input[l] = 0;
-		return input;
+	}else if(l <= 0){
+		return NULL;
 	}
-	return NULL;		
+	return input;		
 }
 
 
@@ -288,7 +289,7 @@ int exec_cmd(char * input){
 
 	seq = l->seq;
 
-	printf("%s\n", **(l->seq));
+	// printf("%s\n", **(l->seq));
 
 	if (! *seq) return 1;
 
@@ -309,17 +310,14 @@ int exec_cmd(char * input){
 			perror ("cd failed");
 			chdir(curr_dir);
 		}
-		// printf("%s\n", path);
-		// return 0;
-		// char ***seq_1;
-		// struct cmdline *nl;
+		char * temp = "pwd";
 		memset(l, 0, sizeof(l));
-		l = readcmd("pwd\n");
+		l = readcmd(temp);
 		printf("%s\n", **(l->seq));
 		memset(&seq, 0, sizeof(seq));
 		// l = readcmd("pwd");
 		seq = l -> seq;
-		return 0;
+		// return 0;
 	}
 	int command_count;
 
