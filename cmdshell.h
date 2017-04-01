@@ -1,19 +1,22 @@
 #ifndef _CMDSHELL_H
 #define _CMDSHELL_H
 
-struct cmd{
-	char *error;		//error not null = there's a error
-	char *input;		//input not null = file or name for input redirection
-	char *output;		//output not null = file or name for output redirection
-	char *background;	//background not null = processes in background
-	char ***sequence;	//see below
+/* Read a command line from input stream. Return null when input closed.
+Display an error and call exit() in case of memory exhaustion. */
+struct cmdline *readcmd(char * input);
+
+
+/* Structure returned by readcmd() */
+struct cmdline {
+	char *err;	/* If not null, it is an error message that should be
+			   displayed. The other fields are null. */
+	char *in;	/* If not null : name of file for input redirection. */
+	char *out;	/* If not null : name of file for output redirection. */
+	char *backgrounded; /* If not null : processus is backgrounded */       //added
+	char ***seq;	/* See comment below */
 };
 
-//sequence here is a sequence of command, output of the previous one the input of the next
-//are linked by a pipe
-//a command is an array of string (char **), last item is a null pointer
-//a sequence of command is an array of command (char ***), last item is a null pointer
-
 int exec_cmd(char * input);
+
 
 #endif

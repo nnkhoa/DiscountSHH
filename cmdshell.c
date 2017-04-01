@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <errno.h>
-// #include <limits.h>
+#include <limits.h>
 #include <string.h>
 #include <stdbool.h>
 #include <alloca.h>
@@ -13,317 +13,362 @@
 #include <fcntl.h>
 #include "cmdshell.h"
 
-char* processinput(char* input){
-	unsigned int length = sizeof(input);
-	if((length > 0) && (input[length - 1 ] == '\n')){
-		length--;
-		input[length] = 0;
-	}
-	return input;	
+static void memory_error(void){
+	errno = ENOMEM;
+	perror(0);
+	exit(1);
 }
 
-char** parsecmd(char* cmd){
-	char * current = cmd;
-	char ** parse_cmd = 0;
-	unsigned int length;
+
+static void *xmalloc(size_t size){
+	void *p = malloc(size);
+	if (!p) memory_error();
+	return p;
+}
+
+
+static void *xrealloc(void *ptr, size_t size){
+	void *p = realloc(ptr, size);
+	if (!p) memory_error();
+	return p;
+}
+
+
+/* Read a line from standard input and put it in a char[] */
+static char *readline(char *input){
+	size_t l = strlen(input);
+	if ((l > 0) && (input[l-1] == '\n')) {
+		l--;
+		input[l] = 0;
+		return input;
+	}
+	return NULL;		
+}
+
+
+/* Split the string in words, according to the simple shell grammar. */
+static char **split_in_words(char *line){
+	char *cur = line;
+	char **tab = 0;
+	size_t l = 0;
 	char c;
 
-	while((c = *current) != 0){
-		char * w = 0;
-		char * start;
-
-		switch(c){
-			case ' ':
-			case '\t':
-				current++;
-				break;
-			case '<':
-				w = "<";
-				current ++;
-				break;
-			case '>':
-				w = ">";
-				current++;
-				break;
-			case '|':
-				w = "|";
-				current++;
-				break;
-			case '&':
-				w = "&";
-				current++;
-				break;
-			default:
-				start = current;
-				while(c){
-					c = *++current;
-					switch(c){
-						case 0:
-						case ' ':
-						case '\t':
-						case '<':
-						case '>':
-						case '|':
-						case '&':
-							c = 0;
-							break;
-						default: ;
-					}
+	while ((c = *cur) != 0) {
+		char *w = 0;
+		char *start;
+		switch (c) {
+		case ' ':
+		case '\t':
+			/* Ignore any whitespace */
+			cur++;
+			break;
+		case '<':
+			w = "<";
+			cur++;
+			break;
+		case '>':
+			w = ">";
+			cur++;
+			break;
+		case '|':
+			w = "|";
+			cur++;
+			break;
+		case '&':
+			w = "&";
+			cur++;
+			break;
+		default:
+			/* Another word */
+			start = cur;
+			while (c) {
+				c = *++cur;
+				switch (c) {
+				case 0:
+				case ' ':
+				case '\t':
+				case '<':
+				case '>':
+				case '|':
+				case '&':
+					c = 0;
+					break;
+				default: ;
 				}
-				w = malloc((current - start + 1)*sizeof(char));
-				strncpy(w, start, current - start);
-				w[current - start] = 0;
+			}
+			w = xmalloc((cur - start + 1) * sizeof(char));
+			strncpy(w, start, cur - start);
+			w[cur - start] = 0;
 		}
-		if(w){
-			parse_cmd = realloc(parse_cmd, (length + 1) * sizeof(char *));
-			parse_cmd[length++] = w;
+		if (w) {
+			tab = xrealloc(tab, (l + 1) * sizeof(char *));
+			tab[l++] = w;
 		}
 	}
-	parse_cmd = realloc(parse_cmd, (length + 1) * sizeof(char *));
-	parse_cmd[length++] = 0;
-	return parse_cmd;
+	tab = xrealloc(tab, (l + 1) * sizeof(char *));
+	tab[l++] = 0;
+	return tab;
 }
 
-//free the sequence of commands
-void free_sequence(char *** sequence){
-	for (int i = 0; sequence[i] != 0; i++){
-		char **section = sequence[i];
 
-		for (int j = 0; section[j] != 0; j++){
-			free(section[j]);
-		}
-		free(section);
+static void freeseq(char ***seq){
+	int i, j;
+
+	for (i=0; seq[i]!=0; i++) {
+		char **cmd = seq[i];
+
+		for (j=0; cmd[j]!=0; j++) free(cmd[j]);
+		free(cmd);
 	}
-	free(sequence);
+	free(seq);
 }
 
-//free that data structure cmd
-void free_cmd(struct cmd *_cmd){
-	if(_cmd->error) free(_cmd->error);
-	if(_cmd->input) free(_cmd->input);
-	if(_cmd->output) free(_cmd->output);
-	if(_cmd->background) free(_cmd->background);
-	if(_cmd->sequence) free_sequence(_cmd->sequence);
+
+/* Free the fields of the structure but not the structure itself */
+static void freecmd(struct cmdline *s){
+	if (s->in) free(s->in);
+	if (s->out) free(s->out);
+	if (s->backgrounded) free(s->backgrounded);
+	if (s->seq) freeseq(s->seq);
 }
 
-struct cmd * parseinput(char * input){
-	static struct cmd *static_cmd = 0;
-	struct cmd *_cmd = static_cmd;
+
+struct cmdline *readcmd(char * input){
+	static struct cmdline *static_cmdline = 0;
+	struct cmdline *s = static_cmdline;
+	char *line;
+	char **words;
+	int i;
 	char *w;
-	char **section, **cmd_string;
-	char ***sequence;
-	unsigned int cmd_length, seq_length, i;
+	char **cmd;
+	char ***seq;
+	size_t cmd_len, seq_len;
 
-	input = processinput(input);
-
-	if(input == NULL){
-		if(cmd_string){
-			free_cmd(_cmd);
-			free(cmd_string);
+	line = readline(input);
+	
+	if (line == NULL) {
+		if (s) {
+			freecmd(s);
+			free(s);
 		}
-		return static_cmd = 0;
+		return static_cmdline = 0;
 	}
 
-	cmd_string = malloc(sizeof(char *));
-	cmd_string[0] = 0;
-	cmd_length = 0;
 
-	sequence = malloc(sizeof(char **));
-	sequence[0] = 0;
-	seq_length = 0;
+	cmd = xmalloc(sizeof(char *));
+	cmd[0] = 0;
+	cmd_len = 0;
+	seq = xmalloc(sizeof(char **));
+	seq[0] = 0;
+	seq_len = 0;
 
-	//should check if i need to remove the '/n' symbol in input or not
-	section = parsecmd(input);
+	words = split_in_words(line);
 
-	if(!_cmd){
-		static_cmd = _cmd = malloc(sizeof(struct cmd));
-	}else{
-		free_cmd(_cmd);
-	}
-
-	memset(_cmd, 0, sizeof(_cmd));
+	if (!s)
+		static_cmdline = s = xmalloc(sizeof(struct cmdline));
+	else
+		freecmd(s);
+	s->err = 0;
+	s->in = 0;
+	s->out = 0;
+	s->backgrounded = 0;
+	s->seq = 0;
 
 	i = 0;
-
-	while((w = section[i++]) != 0){
-		switch(w[0]){
-			case '&':
-				if(_cmd->background){
-					_cmd->error = "error on &";
-					goto error;
-				}
-				_cmd->background = &w[0];
-				break;
-			case '<':
-				if(_cmd->input){
-					_cmd->error = "only 1 input file is allowed";
-					goto error;
-				}
-				if(section[i] == 0){
-					_cmd->error = "file name missing for input redirection";
-					goto error;
-				}
-				_cmd->input = section[i++];
-				break;
-			case '>':
-				if(_cmd->output){
-					_cmd->error = "only 1 output file is allowed";
-					goto error;
-				}
-				if(section[i] == 0){
-					_cmd->error = "file name missing for output redirection";
-					goto error;
-				}
-				_cmd->output = section[i++];
-				break;
-			case '|':
-				if(cmd_length == 0){
-					_cmd->error = "misplace pipe";
-					goto error;
-				}
-
-				sequence = realloc(sequence, (seq_length + 2)*sizeof(char **));
-				sequence[seq_length++] = cmd_string;
-				sequence[seq_length] = 0;
-
-				cmd_string = malloc(sizeof(char *));
-				cmd_string[0] = 0;
-				cmd_length = 0;
-				break;
-			default:
-				cmd_string = realloc(cmd_string, (cmd_length + 2)*sizeof(char *));
-				cmd_string[cmd_length++] = w;
-				cmd_string[cmd_length] = 0;
-		}
-
-		if(cmd_length != 0){
-			sequence = realloc(sequence, (seq_length + 2)*sizeof(char **));
-			sequence[seq_length++] = cmd_string;
-			sequence[seq_length] = 0;
-		}else if(seq_length != 0){
-			_cmd -> error = "misplace pipe";
-			i--;
+	while ((w = words[i++]) != 0) {
+		switch (w[0]) {
+		case '&':
+			if(s->backgrounded){
+			s->err = "error on &";
 			goto error;
-		}else{
-			free(cmd_string);
-		}
-		free(section);
-		_cmd->sequence = sequence;
-		return _cmd;
-	}
-error:
-	while((w = section[i++]) != 0){
-		switch(w[0]){
-			case '&':
-			case '<':
-			case '>':
-			case '|':
-				break;
-			default:
-				free(w);
-		}
-	}
-	free(section);
-	free_sequence(sequence);
-	for(i = 0; cmd_string[i] != 0; i++){
-		free(cmd_string[i]);
-	}
-	free(cmd_string);
+			}
+			s->backgrounded = &w[0];
+			break;
+		case '<':
+			/* Tricky : the word can only be "<" */
+			if (s->in) {
+				s->err = "only one input file supported";
+				goto error;
+			}
+			if (words[i] == 0) {
+				s->err = "filename missing for input redirection";
+				goto error;
+			}
+			s->in = words[i++];
+			break;
+		case '>':
+			/* Tricky : the word can only be ">" */
+			if (s->out) {
+				s->err = "only one output file supported";
+				goto error;
+			}
+			if (words[i] == 0) {
+				s->err = "filename missing for output redirection";
+				goto error;
+			}
+			s->out = words[i++];
+			break;
+		case '|':
+			/* Tricky : the word can only be "|" */
+			if (cmd_len == 0) {
+				s->err = "misplaced pipe";
+				goto error;
+			}
 
-	if(_cmd->input){
-		free(_cmd->input);
-		_cmd->input = 0;
+			seq = xrealloc(seq, (seq_len + 2) * sizeof(char **));
+			seq[seq_len++] = cmd;
+			seq[seq_len] = 0;
+
+			cmd = xmalloc(sizeof(char *));
+			cmd[0] = 0;
+			cmd_len = 0;
+			break;
+		default:
+			cmd = xrealloc(cmd, (cmd_len + 2) * sizeof(char *));
+			cmd[cmd_len++] = w;
+			cmd[cmd_len] = 0;
+		}
 	}
-	if(_cmd->output){
-		free(_cmd->output);
-		_cmd->output = 0;
+
+	if (cmd_len != 0) {
+		seq = xrealloc(seq, (seq_len + 2) * sizeof(char **));
+		seq[seq_len++] = cmd;
+		seq[seq_len] = 0;
+	} else if (seq_len != 0) {
+		s->err = "misplaced pipe";
+		i--;
+		goto error;
+	} else
+		free(cmd);
+	free(words);
+	s->seq = seq;
+	return s;
+error:
+	while ((w = words[i++]) != 0) {
+		switch (w[0]) {
+		case '<':
+		case '>':
+		case '|':
+		case '&':
+			break;
+		default:
+			free(w);
+		}
 	}
-	if(_cmd->background){
-		free(_cmd->background);
-		_cmd->background = 0;
+	free(words);
+	freeseq(seq);
+	for (i=0; cmd[i]!=0; i++) free(cmd[i]);
+	free(cmd);
+	if (s->in) {
+		free(s->in);
+		s->in = 0;
 	}
-	return _cmd;
+	if (s->out) {
+		free(s->out);
+		s->out = 0;
+	}
+	if (s->backgrounded) {
+		free(s->backgrounded);
+		s->out = 0;
+	}
+	return s;
 }
 
-int exec_cmd(char *input){
+int exec_cmd(char * input){
 	int spid, status;
-	struct cmd * cmdline;
-	char *** sequence;
-	char **cmd_string;
-	int before[2], after[2];
-
-	cmdline = parseinput(input);
-	sequence = cmdline->sequence;
-
-	if(! *sequence){
-		return 1;
-	}
-
-	if(!strcasecmp(**sequence, "cd")){
-		char *param = (*sequence)[1];
-		char *curr_dir = getcwd(NULL, 0);
-		char *path;
-
-		if(!param){
-			path = getenv("HOME");
-		}else if(strncmp(param, "/", 1)){
-			path = strcat(curr_dir, "/");
-			path = strcat(path, param);
-		}else path = param;
-
-		if(chdir(path)){
-			perror("cd failed");
-			chdir(curr_dir);
-		}
-		return 0;
-	}
-
-	int cmd_count;
-
-	for(cmd_count = 0; sequence[cmd_count]; cmd_count++);
-
-	pid_t *pid = alloca(cmd_count * sizeof(pid_t));
-	
-	int process_number = 0;
+	struct cmdline *l;
+	char ***seq;
+	char **cmd;
+	int before[2];
+	int after[2];
 
 	bool begin = true;
 
-	while(*sequence){
-		cmd_string = *sequence;
-		sequence++;
-		if(*sequence){
+	l = readcmd(input);
+
+	seq = l->seq;
+
+	printf("%s\n", **(l->seq));
+
+	if (! *seq) return 1;
+
+	if(!strcasecmp(**seq, "exit")) {
+		return 0;
+	}
+
+	if(!strcasecmp(**seq, "cd")) {
+		char *param = (*seq)[1];
+		char *curr_dir = getcwd(NULL, 0);
+		char *path;
+		if (!param ) path = getenv("HOME");
+		else if (strncmp(param,"/",1)) {
+			path = strcat(curr_dir, "/");
+			path = strcat(path, param);
+		} else path = param;
+		if (chdir(path)) {
+			perror ("cd failed");
+			chdir(curr_dir);
+		}
+		// printf("%s\n", path);
+		// return 0;
+		// char ***seq_1;
+		// struct cmdline *nl;
+		memset(l, 0, sizeof(l));
+		l = readcmd("pwd\n");
+		printf("%s\n", **(l->seq));
+		memset(&seq, 0, sizeof(seq));
+		// l = readcmd("pwd");
+		seq = l -> seq;
+		return 0;
+	}
+	int command_count;
+
+	//count the number of command
+	for(command_count = 0; seq[command_count]; command_count++);
+
+	pid_t *pid= alloca(command_count * sizeof(pid_t));
+
+	int process_number = 0;
+
+	while(*seq){
+		cmd = *seq;
+		seq++;
+		if(*seq){
 			pipe(after);
 		}
+
 		pid[process_number] = fork();
 
-		if(!pid[process_number]){
+		if(!pid[process_number]){	//means that if pid == 0
 			if(!begin){
 				dup2(before[0], 0);
 				close(before[0]);
 				close(before[1]);
 			}
-			if(*sequence){
-				dup2(after[1],1);
+			if(*seq){
+				dup2(after[1], 1);
 				close(after[0]);
 				close(after[1]);
 			}
-			status = execvp(cmd_string[0], cmd_string);
+			status = execvp(cmd[0], cmd);
 		}else{
 			if(!begin){
 				close(before[0]);
 				close(before[1]);
 			}
+			// memcpy(before, after, 2*sizeof(int));
+			before[0] = after[0];
 
-			memcpy(before, after, 2*sizeof(int));
+
+			before[1] = after[1];
 			begin = false;
 		}
 
 		process_number++;
 	}
-	printf(".\n");
-	for(int i = 0; i < cmd_count; i++){
+
+	for(int i = 0; i< command_count; i++){
 		waitpid(pid[i], NULL, 0);
-		printf("..\n");
 	}
 
 	return 0;
