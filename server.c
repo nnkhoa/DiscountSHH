@@ -91,9 +91,11 @@ int main(){
 			if(clientfds[i] > 0 && FD_ISSET(clientfds[i], &set)){
 				memset(buffer, 0, sizeof(buffer));
 				if(read(clientfds[i], buffer, sizeof(buffer)) > 0){
-					printf("Client %d said: %s\n", i, buffer);
-					//do something to parse it here
-					exec_cmd(buffer);
+					printf(">Shell %s\n", buffer);
+					
+					if(exec_cmd(buffer) != 0){
+						printf("exec failed\n");
+					}
 
 				} else{
 					printf("Client %d has disconnected\n", i);
