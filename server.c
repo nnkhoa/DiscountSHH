@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <sys/select.h>
 #include "cmdshell.h"
 
@@ -14,7 +15,7 @@ int main(){
 	int clientfds[MAX_CLIENT];				//the set of clients socket that connect to this server
 	struct sockaddr_in saddr, caddr;		//address format of server/client
 	unsigned port = 6666;					//port to be used
-	char buffer[256], temp[256];			//buffer to use to send/receive message
+	char buffer[128];			//buffer to use to send/receive message
 	char * delim = "\1";
 
 	memset(clientfds, 0, sizeof(clientfds));	//initialize the array of clientfd
@@ -100,14 +101,20 @@ int main(){
 						printf("exec failed\n");
 						continue;
 					}
-					memset(buffer, 0, sizeof(buffer));
+
+					//make temp_fd non-blocking
+					int tfl = fcntl(temp_fd, F_GETFL, 0);
+					tfl |= O_NONBLOCK;
+					tfl = fcntl(temp_fd, F_SETFL, tfl);
+
 					int read_value;
+					
 					while(1){
-						read_value = read(temp_fd, buffer, sizeof(buffer));
-						printf("%d\n", read_value);
-						send(clientfds[i], buffer, strlen(buffer), 0);
-						if(strchr(buffer, '\0') != NULL) break;
 						memset(buffer, 0, sizeof(buffer));
+						read_value = read(temp_fd, buffer, sizeof(buffer) - 1);
+						if(read_value == -1) break;
+						printf("read value: %d\n", read_value);
+						send(clientfds[i], buffer, strlen(buffer), 0);
 					}
 					send(clientfds[i], delim, sizeof(delim), 0);
 				} else{
