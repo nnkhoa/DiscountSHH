@@ -7,13 +7,16 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <limits.h>
 
 int main(int argc, char** argv){
 	struct sockaddr_in saddr;		//address format of the client
 	struct hostent *h;				//host
 	int sockfd;				//the socket
 	unsigned int port = 6666;		//port to be use
-	char hostname[256], buffer[256], temp[256];
+	char hostname[256], buffer[128];
+	char *temp_ch;
+	int read_value = 0;
 
 	//check for argument
 	if(argc > 2){				
@@ -78,13 +81,15 @@ int main(int argc, char** argv){
 
 		while(1){
 			memset(buffer, 0, sizeof(buffer));
-			read(sockfd, buffer, sizeof(buffer));
-			printf("%s", buffer);
-			// printf("%c\n", buffer[strlen(buffer)]);
-			if(strchr(buffer, '\1') != NULL) {
+			read_value = read(sockfd, buffer, sizeof(buffer));
+			temp_ch = strchr(buffer, '\1');
+			if(temp_ch != NULL) {
+				*temp_ch = '\0';
+				printf("%s", buffer);
 				printf("\n");
 				break;
 			}
+			write(1, buffer, read_value);
 		}
 	}
 
