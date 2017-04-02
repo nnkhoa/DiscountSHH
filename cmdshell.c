@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2002, Simon Nieuviarts
+ */
+
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -333,16 +337,19 @@ int exec_cmd(char * input){
 		cmd = *seq;
 		seq++;
 		pipe(pipe_fd);
+		
 		if(*seq){
 			pipe(after);
 		}
 
+		
 		pid[process_number] = fork();
 
 		if(!pid[process_number]){	//means that if pid == 0
 			close(pipe_fd[0]);
 			dup2(pipe_fd[1], 1);
 			close(pipe_fd[1]);
+
 			if(!begin){
 				dup2(before[0], 0);
 				close(before[0]);
@@ -353,7 +360,9 @@ int exec_cmd(char * input){
 				close(after[0]);
 				close(after[1]);
 			}
+
 			status = execvp(cmd[0], cmd);
+
 		}else{
 			if(!begin){
 				close(before[0]);
@@ -361,8 +370,6 @@ int exec_cmd(char * input){
 			}
 			// memcpy(before, after, 2*sizeof(int));
 			before[0] = after[0];
-
-
 			before[1] = after[1];
 			begin = false;
 		}
