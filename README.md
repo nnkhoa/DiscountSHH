@@ -1,4 +1,4 @@
-# DiscountSHH
+# DiscountSSH
 
 This is a project for USTH's Master Course Subject: System & Network
 
