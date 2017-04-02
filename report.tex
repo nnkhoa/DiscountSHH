@@ -1,0 +1,106 @@
+\documentclass{report}
+\title{
+	{System Architecture and Networking Project Report}\\
+	{\large Master M1 - University of Science and Technology of Hanoi}
+}
+\author{Nguyen Nhu Khoa}
+
+\begin{document}
+\maketitle
+\begin{section}{Introduction}
+The main goal of the project is to implement a mini remote shell, written in C language
+\\
+\\
+The program contain 2 parts:
+
+\begin{itemize}
+	\item a server which waits for connection and handles commands that is sent from a client and return the output of the command to the client
+	\item a client which connect to a server and send command to that remote machine 
+\end{itemize}
+
+This report describes the project for the System Architecture and Network course, what has been done, what was achieve and what have yet to gain.
+\\
+\\
+The project's source code is available at: https://github.com/nnkhoa/DiscountSSH
+\end{section}
+
+\begin{section}{The Server}
+
+The server is setup with the feature of non-blocking and multiplex. First, a non-blocking socket is created and is put on listening for incoming connection. Next, the server is multiplex by gathering all the socket into one common set and then poll and wait the whole set.
+\\
+\\
+To handles the command from clients, the server uses a library(a .c and .h file) that was given in the course but was modified to fit the context of the project (e.g. adding parameter to some functions, write new function). The library handles the input, parses it into set commands and their respective parameters.
+\\
+\\
+When executing a command, there is a pipe which takes in the stdout so that instead of printing the result of the command to the server, it is redirected into the pipe, which is later used to send back the result to the client.
+\\
+\\
+After receiving the result in the pipe, the output of the pipe is read in the a buffer. The file descriptor that contains the output is set to non-blocking so that if it's empty, it wont block the whole server. After each time a buffer is filled, it is sent to the client. When the file descriptor is empty, the server will send a special character, marking that it's the end of the output.
+
+\end{section}
+
+\begin{section}{The Client}
+
+As the same as the server, the client also has non-blocking attribute. After resolving the hostname, the client will connect to the server through socket connection. After a success connection, the client will enter a loop, waiting for input from keyboard and send it to the server. If the command is executed, the client will receive the result from the server and display it.
+\end{section}
+
+\begin{section}{Demostration}
+\begin{verbatim}
+khoa@KhoaNguyen-Vostro-3460:~/code-n-stuff/DiscountSHH$ ./client.out localhost
+127.0.0.1
+Connected!
+>Client: ls -l|grep out 
+-rwxrwxr-x 1 khoa khoa   18592 Th03 30 20:27 a.out
+-rwxrwxr-x 1 khoa khoa   13904 Th04  2 16:19 client.out
+-rwxrwxr-x 1 khoa khoa   24584 Th04  2 21:11 server.out
+
+>Client: ps
+  PID TTY          TIME CMD
+ 4384 pts/4    00:00:00 bash
+13707 pts/4    00:00:00 strace
+13709 pts/4    00:00:00 client.out
+16551 pts/4    00:00:00 server.out
+16582 pts/4    00:00:00 ps
+
+>Client: pwd       
+/home/khoa/code-n-stuff/DiscountSHH
+
+>Client: cat cmdshell.h
+#ifndef _CMDSHELL_H
+#define _CMDSHELL_H
+
+/* Read a command line from input stream. Return null when input closed.
+Display an error and call exit() in case of memory exhaustion. */
+struct cmdline *readcmd(char * input);
+
+/* Structure returned by readcmd() */
+struct cmdline {
+	char *err;	/* If not null, it is an error message that should be
+			   displayed. The other fields are null. */
+	char *in;	/* If not null : name of file for input redirection. */
+	char *out;	/* If not null : name of file for output redirection. */
+	char *backgrounded; /* If not null : processus is backgrounded */       //added
+	char ***seq;	/* See comment below */
+};
+
+int exec_cmd(char * input);
+
+#endif
+>Client: exit
+Exitting....
+
+\end{verbatim}
+\end{section}
+
+\begin{section}{Future Improvement}
+\begin{itemize}
+	\item The server has yet to support I/O redirection from and into file, or background processes
+	\item Authentication for clients to access the server is also needed
+	\item there's a bug revolving around the command dmesg where this command did not return a SIGCHLD signal to terminal the child process
+\end{itemize}
+\end{section}
+
+\begin{section}{Conclusion}
+The project has a server and client implemented where the server acts as a remote shell, waiting for the client to send commands. Both of them use non-blocking I/O, and there is a simple message framing mechanism. However, the project will need more improvements to cover some of its flaws
+\end{section}
+\end{document}
