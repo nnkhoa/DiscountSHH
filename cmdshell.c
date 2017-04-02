@@ -282,6 +282,7 @@ int exec_cmd(char * input){
 	char **cmd;
 	int before[2];
 	int after[2];
+	int pipe_fd[2];
 
 	bool begin = true;
 
@@ -331,6 +332,7 @@ int exec_cmd(char * input){
 	while(*seq){
 		cmd = *seq;
 		seq++;
+		pipe(pipe_fd);
 		if(*seq){
 			pipe(after);
 		}
@@ -338,6 +340,9 @@ int exec_cmd(char * input){
 		pid[process_number] = fork();
 
 		if(!pid[process_number]){	//means that if pid == 0
+			close(pipe_fd[0]);
+			dup2(pipe_fd[1], 1);
+			close(pipe_fd[1]);
 			if(!begin){
 				dup2(before[0], 0);
 				close(before[0]);
@@ -369,5 +374,5 @@ int exec_cmd(char * input){
 		waitpid(pid[i], NULL, 0);
 	}
 
-	return 0;
+	return pipe_fd[0];
 }

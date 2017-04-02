@@ -15,6 +15,7 @@ int main(){
 	struct sockaddr_in saddr, caddr;		//address format of server/client
 	unsigned port = 6666;					//port to be used
 	char buffer[256], temp[256];			//buffer to use to send/receive message
+	char * delim = "\1";
 
 	memset(clientfds, 0, sizeof(clientfds));	//initialize the array of clientfd
 
@@ -91,19 +92,29 @@ int main(){
 			if(clientfds[i] > 0 && FD_ISSET(clientfds[i], &set)){
 				memset(buffer, 0, sizeof(buffer));
 				if(read(clientfds[i], buffer, sizeof(buffer)) > 0){
+					int temp_fd;
+
 					printf(">Shell %s\n", buffer);
 					
-					if(exec_cmd(buffer) != 0){
+					if((temp_fd = exec_cmd(buffer)) == -1){
 						printf("exec failed\n");
+						continue;
 					}
-
+					memset(buffer, 0, sizeof(buffer));
+					int read_value;
+					while(1){
+						read_value = read(temp_fd, buffer, sizeof(buffer));
+						printf("%d\n", read_value);
+						send(clientfds[i], buffer, strlen(buffer), 0);
+						if(strchr(buffer, '\0') != NULL) break;
+						memset(buffer, 0, sizeof(buffer));
+					}
+					send(clientfds[i], delim, sizeof(delim), 0);
 				} else{
 					printf("Client %d has disconnected\n", i);
 					clientfds[i] = 0;
 				}
 			}
 		}
-
 	}
-
 }

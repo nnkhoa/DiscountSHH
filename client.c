@@ -53,14 +53,16 @@ int main(int argc, char** argv){
 	printf("Connected!\n");
 
 	int ch;
-	while(((ch = getchar()) != EOF) && (ch != '\n'));
 
+	if(argc != 2){
+		while(((ch = getchar()) != EOF) && (ch != '\n'));
+	}
+		
 	while(1){
 
 		memset(buffer, 0, sizeof(buffer));
 		
 		printf(">Client: ");
-		fflush(stdin);
 		if(fgets(buffer, sizeof(buffer), stdin) == NULL){
 			return -1;
 		}
@@ -73,6 +75,17 @@ int main(int argc, char** argv){
 		}
 
 		send(sockfd, buffer, strlen(buffer), 0);
+
+		while(1){
+			memset(buffer, 0, sizeof(buffer));
+			read(sockfd, buffer, sizeof(buffer));
+			printf("%s", buffer);
+			// printf("%c\n", buffer[strlen(buffer)]);
+			if(strchr(buffer, '\1') != NULL) {
+				printf("\n");
+				break;
+			}
+		}
 	}
 
 	return 0;
